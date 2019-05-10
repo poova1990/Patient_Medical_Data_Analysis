@@ -1,0 +1,140 @@
+---
+output:
+  html_document: default
+  word_document: default
+  pdf_document: default
+---
+```{r}
+setwd("C:/Users/priya/OneDrive/Documents/Rprojects")
+require("tidyverse")
+require(sqldf)
+diagnosis= read.csv('DiagnosisSample01.csv')
+diagnosis= as_tibble(diagnosis)
+treatment= read.csv('TreatmentSample01.csv')
+treatment= as_tibble(treatment)
+diagnosis
+treatment
+
+#Question 1: First, the clinic would like to know for which diseases they are seeing patients.
+unique(diagnosis$Diagnosis)
+
+#Ans: Anemia ,Breast Cancer,Colon Cancer and Hypertension are the diseases the clinics sees patients 
+
+#1a) Which types of cancer does the clinic see patients for?
+only_cancer=filter(diagnosis,IsCancerDiagnosis=='True')
+only_cancer
+only_cancer_type=distinct(only_cancer,Diagnosis)
+only_cancer_type
+#only_cancer_type would be the subset which has only cancer diagnosis, will be used for future analysis
+
+#Ans:Breast Cancer and Colon Cancer
+
+#1b) How many patients does the clinic see for each cancer type?
+
+sqldf("SELECT COUNT(*) AS Patient_Count,Diagnosis FROM only_cancer GROUP BY Diagnosis ")
+
+#Ans 22 Breast Cancer patients and 11  colon Cancer patients
+
+
+#2The clinic wants to know how long it takes for patients to start therapy after being diagnosed, which they consider #to be helpful in understanding the quality of care for the patients
+#2a) How long after being diagnosed do cancer patients start treatment for each cancer type?
+
+tab=sqldf("select  c.PatientID,c.DiagnosisDate, t.TreatmentDate from only_cancer c INNER JOIN treatment t ON c.PatientID =t.PatientID  GROUP BY c.PatientID,c.DiagnosisDate,t.TreatmentDate" )
+
+tab # Just an inner join which joins only_cancer and treatment dataset using patient ID
+
+masterdata= sqldf("select  c.PatientID,c.DiagnosisDate, t.TreatmentDate,t.DrugCode from only_cancer c INNER JOIN treatment t ON c.PatientID =t.PatientID ")
+
+masterdata
+
+#final below SQL query gets the treatment start date for diagnosed patients 
+final=sqldf("select PatientID,DiagnosisDate,min(TreatmentDate) as TreatmentDate from tab group by patientID")
+final
+
+diff_in_days = round(difftime(final$TreatmentDate,final$DiagnosisDate, units = "days")) # days
+diff_in_days
+
+final=cbind(final,diff_in_days)
+final
+
+#Ans: Final data frame with diff_in_days shows within how many days the patients start their treatment
+
+
+
+#2b) Are there any patients which are diagnosed but not treated at the practice?
+
+sqldf("select patientid from only_cancer where PatientID NOT IN(SELECT PatientID FROM treatment) "   )
+
+#Ans From the above query we can see no rows returned, so there are no patients who are diagonised and not treated.
+
+
+
+#Question 3: After being treated with a first line of treatment (a drug or combination of drugs), what proportion of #all cancer patients go on to be treated with a second line of treatment?
+
+prop =sqldf("SELECT PatientID,COUNT(TreatmentDate) AS TreatmentCount 
+  FROM masterdata
+ GROUP BY PatientID having TreatmentCount <=1")
+
+prop
+
+
+#Ans: From the above query we can see there are no patients with only first line of treatement.
+#i.e All the patients went for multiple line of treatment
+
+
+#Question 4:  How does each drug used at the clinic compare in terms of its duration of therapy?
+
+
+drug=sqldf("select PatientID,min(TreatmentDate)as TreatmentDate_start,Max(TreatmentDate)as TreatmentDate_End,DrugCode from masterdata group by PatientID,DrugCode")
+
+drug
+
+Drug_Duration = round(difftime(drug$TreatmentDate_End,drug$TreatmentDate_start, units = "days")) # days
+Drug_Duration
+
+drug=cbind(drug,Drug_Duration)
+drug
+
+drug$Drug_Duration = as.numeric(drug$Drug_Duration)
+
+drugdays=sqldf("select Drug_Duration,DrugCode from drug order by DrugCode,Drug_Duration asc")
+drugdays
+
+#We can see the Drug duaration for each drug type from the above query in ascending order for multiple patients
+
+#To see duration the therapy went for each Drug, we can see the average if there are no Outliers, else we have to look for the median for right prediction.
+
+#Subset which will have only duration for Drug type A
+
+average_days_DrugA = subset(drugdays,drugdays$DrugCode=='A')
+
+DrugA=sum(average_days_DrugA$Drug_Duration)/count(average_days_DrugA)
+DrugA
+median(average_days_DrugA$Drug_Duration)
+hist(average_days_DrugA$Drug_Duration)
+
+#Subset which will have only duration for Drug type B
+
+average_days_DrugB = subset(drugdays,drugdays$DrugCode=='B')
+
+DrugB=sum(average_days_DrugB$Drug_Duration)/count(average_days_DrugB)
+DrugB
+median(average_days_DrugB$Drug_Duration)
+hist(average_days_DrugB$Drug_Duration)
+
+#Subset which will have only duration for Drug type C
+
+average_days_DrugC = subset(drugdays,drugdays$DrugCode=='C')
+DrugC=sum(average_days_DrugC$Drug_Duration)/count(average_days_DrugC)
+DrugC
+median(average_days_DrugC$Drug_Duration)
+hist(average_days_DrugC$Drug_Duration)
+
+#Ans: As the single patient is given multiple drugs, I have taken the first drug given date and the last drug given #date for the specific drug type and identified the duration for each drug type for a given patient.
+
+# To conclude, on average the duration for Drug 'A'  56 days, Drug 'B' duration would be 63 days and Drug 'C' 
+# duration would be 85 days(we have an outlier so mean will be affected here, we need to take median)
+
+
+```
+
